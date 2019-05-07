@@ -33,9 +33,9 @@ DSTATUS disk_status (
 {
 	pdrv;
 
-	//printf("\ndisk_status()");
+	// printf("\ndisk_status()");
 	
-	return 0;		// Assume disk is ready
+	return RES_OK;		// Assume disk is ready
 }
 
 
@@ -48,11 +48,19 @@ DSTATUS disk_initialize (
 	BYTE pdrv				/* Physical drive nmuber to identify the drive */
 )
 {
-	pdrv;
+	REGS reg;
 	
-	//printf("\ndisk_initialize()");
+	// printf("\ndisk_initialize()");
+	
+	reg.b.B = 0x18;		// HBIOS Media Discovery
+	reg.b.C = pdrv;
+	reg.w.DE = 0x0001;	// Set bit E:0 for media discovery
+	reg.w.HL = 0;
+	bioscall(&reg, &reg);
+	
+	// printf("\nHBIOS Media = %u, Type=%u", reg.b.A, reg.b.E);
 
-	return 0;		// Assume disk is initialized
+	return reg.b.A ? RES_NOTRDY : RES_OK;
 }
 
 

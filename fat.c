@@ -29,6 +29,18 @@ LICENSE:
 #define FS_FAT 1
 #define FS_CPM 2
 
+#define RECLEN 128
+
+typedef struct
+{
+	int	fstyp;
+	union
+	{
+		FCB	fcb;
+		FIL fil;
+	};
+} FILE;
+
 char * ErrTab[] =
 {
 	"Successful Completion",              // FR_OK
@@ -135,6 +147,14 @@ FRESULT SplitPath(char * szPath, char * szFileSpec)
 	// Truncate path
 	*p = '\0';
 
+	// Remove directory separator
+	--p;
+	if ((*p == '/') || (*p == '\\'))
+		*p = '\0';
+	
+	if (szPath[strlen(szPath) - 1] == '/')
+		szPath[strlen(szPath) - 1] = '\0';
+
 	// Debug...
 	//printf("\nPath='%s'", szPath);
 	//printf("\nFileSpec='%s'", szFileSpec);
@@ -165,6 +185,8 @@ FRESULT Dir(void)
 	
 	if (*szFileSpec == '\0')
 		strcpy(szFileSpec, "*");
+	
+	// printf("\nf_findfirst() szPath: '%s', szFileSpec: '%s'", szPath, szFileSpec);
 
 	fr = f_findfirst(&dir, &fno, szPath, szFileSpec);
 
@@ -321,22 +343,23 @@ FRESULT MakeFCB(const TCHAR * path, FCB * pfcb)
 	return FR_OK;
 }
 
-FRESULT cf_open(FCB * pfcb, const TCHAR * path, BYTE mode)
+FRESULT open(FILE * pfile, const TCHAR * path, BYTE mode)
 {
-	mode;
+	if (pfile->fstyp == FS_FAT)
+		return f_open(&pfile->fil, path, FA_READ);
 	
 	BYTE rc;
 	FRESULT fr;
-	BYTE bufTemp[128];
+	BYTE bufTemp[RECLEN];
 	
-	fr = MakeFCB(path, pfcb);
+	fr = MakeFCB(path, &pfile->fcb);
 	
 	if (fr != FR_OK)
 		return fr;
 	
 	if (mode & FA_READ)
 	{
-		rc = BDOS_OPENFILE((WORD)pfcb);
+		rc = BDOS_OPENFILE((WORD)pfile->fcb);
 		return (rc == 0xFF) ? FR_NO_FILE : FR_OK;
 	}
 
@@ -344,14 +367,14 @@ FRESULT cf_open(FCB * pfcb, const TCHAR * path, BYTE mode)
 	{
 		BDOS_SETDMA((WORD)&bufTemp);
 		
-		rc = BDOS_FINDFIRST((WORD)pfcb);
+		rc = BDOS_FINDFIRST((WORD)pfile->fcb);
 		
 		// printf("\nBDOS FindFirst(): %i", rc);
 
 		if (rc != 0xFF)
 			return FR_EXIST;
 		
-		rc = BDOS_MAKEFILE((WORD)pfcb);
+		rc = BDOS_MAKEFILE((WORD)pfile->fcb);
 		
 		// printf("\nBDOS MakeFile(): %i", rc);
 
@@ -364,11 +387,14 @@ FRESULT cf_open(FCB * pfcb, const TCHAR * path, BYTE mode)
 	return FR_INVALID_PARAMETER;
 }
 
-FRESULT cf_close(FCB * pfcb)
+FRESULT close(FILE * pfile)
 {
+	if (pfile->fstyp == FS_FAT)
+		f_close(&pfile->fil);
+
 	BYTE rc;
 	
-	rc = BDOS_CLOSEFILE((WORD)pfcb);
+	rc = BDOS_CLOSEFILE((WORD)pfile->fcb);
 	
 	// printf("\nBDOS CloseFile(): %i", rc);
 	
@@ -378,161 +404,148 @@ FRESULT cf_close(FCB * pfcb)
 	return FR_OK;
 }
 
-FRESULT cf_read(FCB * pfcb, void * pbuf, UINT btr, UINT * br)
+FRESULT read(FILE * pfile, void * pbuf, UINT btr, UINT * br)
 {
-	BYTE rc;
-
-	if (btr != 128)
+	if (btr != RECLEN)
 		return FR_INVALID_PARAMETER;
 	
+	if (pfile->fstyp == FS_FAT)
+		return f_read(&pfile->fil, pbuf, RECLEN, br);
+
+	BYTE rc;
+
 	BDOS_SETDMA((WORD)pbuf);
 	
-	rc = BDOS_READSEQ((WORD)pfcb);
+	rc = BDOS_READSEQ((WORD)&pfile->fcb);
 	
 	//printf("\nBDOS ReadSeq(): %i", rc);
 
 	// Non-zero return indicates EOF	
 	if (rc == 0)
-		*br = 128;
+		*br = RECLEN;
 	else
 		*br = 0;
 
 	return FR_OK;
 }
 
-FRESULT cf_write(FCB * pfcb, void * pbuf, UINT btw, UINT * bw)
+FRESULT write(FILE * pfile, void * pbuf, UINT btw, UINT * bw)
 {
-	BYTE rc;
-
-	if (btw != 128)
+	if (btw != RECLEN)
 		return FR_INVALID_PARAMETER;
 	
+	if (pfile->fstyp == FS_FAT)
+		return f_write(&pfile->fil, pbuf, RECLEN, bw);
+
+	BYTE rc;
+
 	BDOS_SETDMA((WORD)pbuf);
 	
-	rc = BDOS_WRITESEQ((WORD)pfcb);
+	rc = BDOS_WRITESEQ((WORD)&pfile->fcb);
 	
 	// printf("\nBDOS WriteSeq(): %i", rc);
 	
 	if (rc != 0)
 		return FR_DISK_ERR; // Actually "out of space"
 
-	*bw = 128;
+	*bw = RECLEN;
+
 	return FR_OK;
 }
 
-FRESULT CopyFile(char * szSrcFile, char * szDestSpec)
+FRESULT CopyFile(char * szSrcFile, char * szDestFile)
 {
 	FRESULT fr;
-	FIL filSrc, filDest;
-	FCB fcbSrc, fcbDest;
+	FILE fileSrc, fileDest;
 	
-	//printf("\n  CopyFile() %s ==> %s", szSrcFile, szDestSpec);
-	printf("\n%s ==> %s", szSrcFile, szDestSpec);
+	//printf("\n  CopyFile() %s ==> %s", szSrcFile, szDestFile);
+	printf("\n%s ==> %s", szSrcFile, szDestFile);
 	
-	//printf("\nSrcFile %s FATPATH", IsFatPath(szSrcFile) ? "IS" : "NOT");
-	//printf("\nDestSpec %s FATPATH", IsFatPath(szDestSpec) ? "IS" : "NOT");
+	memset(&fileSrc, 0, sizeof(fileSrc));
+	memset(&fileDest, 0, sizeof(fileDest));
 	
-	memset(&fcbSrc, 0, sizeof(fcbSrc));
-	memset(&fcbDest, 0, sizeof(fcbDest));
+	fileSrc.fstyp = IsFatPath(szSrcFile) ? FS_FAT : FS_CPM;
+	fileDest.fstyp = IsFatPath(szDestFile) ? FS_FAT : FS_CPM;
 
-	if (IsFatPath(szSrcFile))
-		fr = f_open(&filSrc, szSrcFile, FA_READ);
-	else
-		fr = cf_open(&fcbSrc, szSrcFile, FA_READ);
+	//printf("\nSrcFile %s FAT", fileSrc.fstyp == FS_FAT ? "IS" : "NOT");
+	//printf("\nDestFile %s FAT", fileDest.fstyp == FS_FAT ? "IS" : "NOT");
+	
+	fr = open(&fileSrc, szSrcFile, FA_READ);
 	
 	if (fr == FR_OK)
 	{
-		if (IsFatPath(szDestSpec))
-			fr = f_open(&filDest, szDestSpec, FA_WRITE | FA_CREATE_ALWAYS);
-		else
-			fr = cf_open(&fcbDest, szDestSpec, FA_WRITE | FA_CREATE_ALWAYS);
-		
+		fr = open(&fileDest, szDestFile, FA_WRITE | FA_CREATE_ALWAYS);
+
 		if (fr == FR_OK)
 		{
 			UINT br, bw;
-			BYTE buf[128];
+			BYTE buf[RECLEN];
 			
 			do
 			{
 				br = 0;
-				memset(buf, 0x1A, 128);
+				memset(buf, 0x1A, RECLEN);
 			
-				if (IsFatPath(szSrcFile))
-					fr = f_read(&filSrc, buf, 128, &br);
-				else
-					fr = cf_read(&fcbSrc, buf, 128, &br);
+				fr = read(&fileSrc, buf, RECLEN, &br);
 				
 				if (fr != FR_OK)
 					break;
-				
-				// printf(" <%i", br);
 				
 				if (br > 0)
 				{
 					bw = 0;
 
-					if (IsFatPath(szDestSpec))
-						fr = f_write(&filDest, buf, 128, &bw);
-					else
-						fr = cf_write(&fcbDest, buf, 128, &bw);
+					fr = write(&fileDest, buf, RECLEN, &bw);
 
 					if (fr != FR_OK)
 						break;
 					
-					if (bw < 128)
+					if (bw < RECLEN)
 					{
 						// This is actually an out of space condition!!!
 						fr = FR_DISK_ERR;
 						break;
 					}
-					
-					// printf(" >%i", bw);
 				}
-			}	while (br == 128);
+			} while (br == RECLEN);
 		}
 		
-		if (IsFatPath(szDestSpec))
-			f_close(&filDest);
-		else
-			cf_close(&fcbDest);
+		close(&fileDest);
 	}
 	
-	if (IsFatPath(szSrcFile))
-		f_close(&filSrc);
-	else
-		cf_close(&fcbSrc);
+	close(&fileSrc);
 
 	return fr;
 }
 
 FRESULT FatCopy(char * szSrcPath, char * szDestPath)
 {
-  FRESULT fr;
+	FRESULT fr;
 	int nFiles;
-  DIR dir;
-  FILINFO fno;
-	char szFileSpec[MAX_FN];
-	char szDestFileSpec[MAX_FN];
+	DIR dir;
+	FILINFO fno;
+	char szSrcSpec[MAX_FN];
+	char szDestSpec[MAX_FN];
 
 	// printf("\nFatCopy()...");
 	
 	nFiles = 0;
 
-	fr = SplitPath(szSrcPath, szFileSpec);
+	fr = SplitPath(szSrcPath, szSrcSpec);
 	if (fr != FR_OK)
 		return fr;
 	
-	fr = SplitPath(szDestPath, szDestFileSpec);
+	fr = SplitPath(szDestPath, szDestSpec);
 	if (fr != FR_OK)
 		return fr;
 	
-	if (*szFileSpec == '\0')
+	if (*szSrcSpec == '\0')
 		return FR_INVALID_PARAMETER;
 	
-	if (IsWild(szFileSpec) && (*szDestFileSpec != '\0'))
+	if (IsWild(szSrcSpec) && (*szDestSpec != '\0'))
 		return FR_INVALID_PARAMETER;
 	
-	fr = f_findfirst(&dir, &fno, szSrcPath, szFileSpec);
+	fr = f_findfirst(&dir, &fno, szSrcPath, szSrcSpec);
 	
 	while ((fr == FR_OK) && (fno.fname[0]))
 	{
@@ -544,13 +557,13 @@ FRESULT FatCopy(char * szSrcPath, char * szDestPath)
 			//printf("\n%s", fno.fname);
 
 			strncpy(szSrcFile, szSrcPath, sizeof(szSrcFile) - 1);
-			//strncat(szSrcFile, "/", sizeof(szSrcFile) - 1);
+			strncat(szSrcFile, "/", sizeof(szSrcFile) - 1);
 			strncat(szSrcFile, fno.fname, sizeof(szSrcFile) - 1);
 			
 			strncpy(szDestFile, szDestPath, sizeof(szDestFile) - 1);
-			//if (IsFatPath(szDestPath))
-			//	strncat(szDestFile, "/", sizeof(szDestFile) - 1);
-			strncat(szDestFile, (*szDestFileSpec == '\0') ? fno.fname : szDestFileSpec, sizeof(szDestFile) - 1);
+			if (IsFatPath(szDestPath))
+				strncat(szDestFile, "/", sizeof(szDestFile) - 1);
+			strncat(szDestFile, (*szDestSpec == '\0') ? fno.fname : szDestSpec, sizeof(szDestFile) - 1);
 			
 			fr = CopyFile(szSrcFile, szDestFile);
 			if (fr != FR_OK)
@@ -576,10 +589,10 @@ FRESULT CpmCopy(char * szSrcPath, char * szDestPath)
 	int rc;
 	int nFiles;
 	FCB fcb, fcbSave;
-	BYTE buf[128];
+	BYTE buf[RECLEN];
 	FCB * dirent;
-	char szFileSpec[MAX_FN];
-	char szDestFileSpec[MAX_FN];
+	char szSrcSpec[MAX_FN];
+	char szDestSpec[MAX_FN];
 
 	szDestPath;
 
@@ -594,18 +607,18 @@ FRESULT CpmCopy(char * szSrcPath, char * szDestPath)
 	if (fr != FR_OK)
 		return fr;
 	
-	fr = SplitPath(szSrcPath, szFileSpec);
+	fr = SplitPath(szSrcPath, szSrcSpec);
 	if (fr != FR_OK)
 		return fr;
 	
-	fr = SplitPath(szDestPath, szDestFileSpec);
+	fr = SplitPath(szDestPath, szDestSpec);
 	if (fr != FR_OK)
 		return fr;
 	
-	if (*szFileSpec == '\0')
+	if (*szSrcSpec == '\0')
 		return FR_INVALID_PARAMETER;
 	
-	if (IsWild(szFileSpec) && (*szDestFileSpec != '\0'))
+	if (IsWild(szSrcSpec) && (*szDestSpec != '\0'))
 		return FR_INVALID_PARAMETER;
 	
 	BDOS_SETDMA((WORD)&buf);
@@ -651,9 +664,9 @@ FRESULT CpmCopy(char * szSrcPath, char * szDestPath)
 		*(p++) = '\0';
 		
 		strncpy(szDestFile, szDestPath, sizeof(szDestFile) - 1);
-		//if (IsFatPath(szDestPath))
-		//	strncat(szDestFile, "/", sizeof(szDestFile) - 1);
-		strncat(szDestFile, (*szDestFileSpec == '\0') ? p2 : szDestFileSpec, sizeof(szDestFile) - 1);
+		if (IsFatPath(szDestPath))
+			strncat(szDestFile, "/", sizeof(szDestFile) - 1);
+		strncat(szDestFile, (*szDestSpec == '\0') ? p2 : szDestSpec, sizeof(szDestFile) - 1);
 		
 		fr = CopyFile(szSrcFile, szDestFile);
 		if (fr != FR_OK)
@@ -665,7 +678,7 @@ FRESULT CpmCopy(char * szSrcPath, char * szDestPath)
 		
 		BDOS_SETDMA((WORD)&buf);
 
-		// Restart search from last file found		
+		// Restart search from last file found
 		memcpy(fcb.name, dirent->name, sizeof(fcb.name));
 		memcpy(fcb.ext, dirent->ext, sizeof(fcb.ext));
 		memset(&fcb + 12, 0, sizeof(fcb) - 12);
