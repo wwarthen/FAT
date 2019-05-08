@@ -1,7 +1,7 @@
 RomWBW HBIOS CP/M FAT Utility ("FAT.COM")
 
 Author: Wayne Warthen
-Updated: 2-May-2019
+Updated: 7-May-2019
 
 Application to manipulate and exchange files with a FAT (DOS)
 filesystem.  Runs on any HBIOS hosted CP/M implementation.
@@ -9,11 +9,11 @@ filesystem.  Runs on any HBIOS hosted CP/M implementation.
 USAGE:
   FAT DIR <path>
   FAT COPY <src> <dst>
-  FAT REN <fn1> <fn2>
-  FAT DEL <fn>
+  FAT REN <from> <to>
+  FAT DEL <path><fn>
 
-  CP/M filespec: [<d>:]FILENAME.EXT (where <d> is A-P)
-  FAT filespec:  <u>:/DIR/FILENAME.EXT (where <u> is disk unit #)
+  CP/M filespec: <d>:FILENAME.EXT (<d> is CP/M drive letter A-P)
+  FAT filespec:  <u>:/DIR/FILENAME.EXT (<u> is disk unit #)
 	
 LICENSE:
   GNU GPLv3 (see file LICENSE.txt)
@@ -22,9 +22,6 @@ NOTES:
  - During a file copy, if the destination file exists, it is not
    handled well.  If destination if FAT filesystem, the file is
    silently overwritten.  If CP/M, the copy aborts with an error.
-
- - FAT directory references MUST be terminated with a trailing '/' or
-   '\'.
 
  - Wildcard matching in FAT filesystems is a bit unusual as
    implemented by FatFS.  See FatFS documentation.
@@ -41,10 +38,6 @@ NOTES:
    C:README.TXT refers to CP/M file README.TXT on CP/M drive C
    README.TXT refers to CP/M file README.TXT on current CP/M drive
    
- - References to a FAT filesystem MUST start with a number followed
-   by a colon.  Any path that does not start with a drive followed
-   by a colon are assumed to reference the current CP/M drive.
-
  - Application is generally oblivious to system files.
  
  - It is not currently possible to reference CP/M user areas other
@@ -63,14 +56,15 @@ BUILD NOTES:
    to SDCC and ZX must be updated for your environment.
    
  - Note that ff.c (core FatFS code) gneerates quite a few compiler
-   warnings which all appear benign.
+   warnings (all appear to be benign).
 
 TO DO:
  - Confirm HBIOS is present at startup.
 
- - Implement DEL and REN functions.
- 
  - Handle existing file collisions with user option prompt.
+ 
+ - Handle read-only and system files somehow.
  
 HISTORY:
  2-May-2019: v0.9 initial release (beta)
+ 7-May-2019: v0.9.1 added REN and DEL (beta)

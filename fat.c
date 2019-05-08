@@ -3,7 +3,7 @@
 HBIOS CP/M FAT Utility ("FAT.COM")
 
 Author: Wayne Warthen
-Updated: 2-May-2019
+Updated: 7-May-2019
 
 LICENSE:
 	GNU GPLv3 (see file LICENSE.txt)
@@ -85,17 +85,17 @@ int Error(FRESULT fr)
 int Usage(void)
 {
 	printf(
-		"\nCP/M FAT Utility v0.9, 2-May-2019 [%s]"
+		"\nCP/M FAT Utility v0.9.1, 7-May-2019 [%s]"
 		"\nCopyright (C) 2019, Wayne Warthen, GNU GPL v3"
 		"\n"
 		"\nUsage: FAT <cmd> <parms>"
 		"\n  FAT DIR <path>"
 		"\n  FAT COPY <src> <dst>"
-		"\n  FAT REN <fn1> <fn2>"
-		"\n  FAT DEL <fn>"
+		"\n  FAT REN <from> <to>"
+		"\n  FAT DEL <path><filename>"
 		"\n"
-		"\nCP/M filespec: <d>:FILENAME.EXT (where <d> is A-P)"
-		"\nFAT filespec:  <u>:/DIR/FILENAME.EXT (where <u> is disk unit #)"
+		"\nCP/M filespec: <d>:FILENAME.EXT (<d> is CP/M drive letter A-P)"
+		"\nFAT filespec:  <u>:/DIR/FILENAME.EXT (<u> is disk unit #)"
 		"\n"
 		, "HBIOS"
 	);
@@ -133,27 +133,22 @@ FRESULT SplitPath(char * szPath, char * szFileSpec)
 		
 	// Find terminal separator
 	p = szPath + strlen(szPath);
-	while ((p > szPath) && (*p != '/') && (*p != '\\') && (*p != ':'))
+	while ((p >= szPath) && (*p != '/') && (*p != '\\') && (*p != ':'))
 		p--;
 	
-	// Bump past the separator character
-	if (p > szPath)
-		p++;
-
 	// Extract filename
 	memset(szFileSpec, 0, MAX_FN + 1);
-	strncpy(szFileSpec, p, MAX_FN);
-
-	// Truncate path
-	*p = '\0';
-
-	// Remove directory separator
-	--p;
-	if ((*p == '/') || (*p == '\\'))
-		*p = '\0';
+	strncpy(szFileSpec, p + 1, MAX_FN);
 	
-	if (szPath[strlen(szPath) - 1] == '/')
-		szPath[strlen(szPath) - 1] = '\0';
+	if (p >= szPath)
+	{
+		if (*p == ':')
+			p++;
+	}
+	else
+		p++;
+
+	*p = '\0';		// truncate path
 
 	// Debug...
 	//printf("\nPath='%s'", szPath);
@@ -179,16 +174,20 @@ FRESULT Dir(void)
 	if (fr != FR_OK)
 		return fr;
 	
-	fr = SplitPath(szPath, szFileSpec);
-	if (fr != FR_OK)
-		return fr;
-	
+	fr = f_stat(szPath, &fno);
+
+	if ((fr == FR_OK) && (fno.fattrib & AM_DIR))
+		*szFileSpec = '\0';
+	else
+		fr = SplitPath(szPath, szFileSpec);
+
 	if (*szFileSpec == '\0')
 		strcpy(szFileSpec, "*");
 	
 	// printf("\nf_findfirst() szPath: '%s', szFileSpec: '%s'", szPath, szFileSpec);
 
-	fr = f_findfirst(&dir, &fno, szPath, szFileSpec);
+	if (fr == FR_OK)
+		fr = f_findfirst(&dir, &fno, szPath, szFileSpec);
 
 	if (fr == FR_OK)
 		printf("\nDirectory of %s\n", szPath);
@@ -346,7 +345,7 @@ FRESULT MakeFCB(const TCHAR * path, FCB * pfcb)
 FRESULT open(FILE * pfile, const TCHAR * path, BYTE mode)
 {
 	if (pfile->fstyp == FS_FAT)
-		return f_open(&pfile->fil, path, FA_READ);
+		return f_open(&pfile->fil, path, mode);
 	
 	BYTE rc;
 	FRESULT fr;
@@ -535,7 +534,22 @@ FRESULT FatCopy(char * szSrcPath, char * szDestPath)
 	if (fr != FR_OK)
 		return fr;
 	
-	fr = SplitPath(szDestPath, szDestSpec);
+	if (IsFatPath(szDestPath))
+	{
+		fr = f_stat(szDestPath, &fno);
+		//printf("\nf_stat=%i", fr);
+
+		if ((fr == FR_OK) && (fno.fattrib & AM_DIR))
+			*szDestSpec = '\0';
+		else
+			fr = SplitPath(szDestPath, szDestSpec);
+		
+		//printf("\nSplitPath=%i", fr);
+		//printf("\nszDestPath='%s', szDestSpec='%s'", szDestPath, szDestSpec);
+	}
+	else
+		fr = SplitPath(szDestPath, szDestSpec);
+
 	if (fr != FR_OK)
 		return fr;
 	
@@ -547,6 +561,9 @@ FRESULT FatCopy(char * szSrcPath, char * szDestPath)
 	
 	fr = f_findfirst(&dir, &fno, szSrcPath, szSrcSpec);
 	
+	if (fr == FR_OK)
+		printf("\nCopying...\n");
+
 	while ((fr == FR_OK) && (fno.fname[0]))
 	{
 		char szSrcFile[MAX_PATH];
@@ -566,13 +583,12 @@ FRESULT FatCopy(char * szSrcPath, char * szDestPath)
 			strncat(szDestFile, (*szDestSpec == '\0') ? fno.fname : szDestSpec, sizeof(szDestFile) - 1);
 			
 			fr = CopyFile(szSrcFile, szDestFile);
-			if (fr != FR_OK)
-				return fr;
-			
-			nFiles++;
+			if (fr == FR_OK)
+				nFiles++;
 		}
 		
-		fr = f_findnext(&dir, &fno);
+		if (fr == FR_OK)
+			fr = f_findnext(&dir, &fno);
 	}
 	
 	if (nFiles)
@@ -591,6 +607,7 @@ FRESULT CpmCopy(char * szSrcPath, char * szDestPath)
 	FCB fcb, fcbSave;
 	BYTE buf[RECLEN];
 	FCB * dirent;
+	FILINFO fno;
 	char szSrcSpec[MAX_FN];
 	char szDestSpec[MAX_FN];
 
@@ -611,7 +628,22 @@ FRESULT CpmCopy(char * szSrcPath, char * szDestPath)
 	if (fr != FR_OK)
 		return fr;
 	
-	fr = SplitPath(szDestPath, szDestSpec);
+	if (IsFatPath(szDestPath))
+	{
+		fr = f_stat(szDestPath, &fno);
+		//printf("\nf_stat=%i", fr);
+
+		if ((fr == FR_OK) && (fno.fattrib & AM_DIR))
+			*szDestSpec = '\0';
+		else
+			fr = SplitPath(szDestPath, szDestSpec);
+		
+		//printf("\nSplitPath=%i", fr);
+		//printf("\nszDestPath='%s', szDestSpec='%s'", szDestPath, szDestSpec);
+	}
+	else
+		fr = SplitPath(szDestPath, szDestSpec);
+
 	if (fr != FR_OK)
 		return fr;
 	
@@ -627,6 +659,9 @@ FRESULT CpmCopy(char * szSrcPath, char * szDestPath)
 	
 	// printf("\nBDOS FindFirst(): %i", rc);
 	
+	if (rc != 0xFF)
+		printf("\nCopying...\n");
+
 	while (rc != 0xFF)
 	{
 		char szSrcFile[MAX_PATH];
@@ -719,25 +754,26 @@ FRESULT Copy(void)
 	szDestPath = strtok(NULL, " ");
 	if (szDestPath == NULL)
 		return FR_INVALID_PARAMETER;
-	
+
+	fr = FR_OK;
+
 	if (IsFatPath(szSrcPath))
-	{
 		fr = f_mount(&fsSrc, szSrcPath, 1);
-		if (fr != FR_OK)
-			return fr;
-	}
 	
-	if (IsFatPath(szDestPath))
+	if ((fr == FR_OK) && (IsFatPath(szDestPath)))
 	{
 		fr = f_mount(&fsDest, szDestPath, 1);
 		if (fr != FR_OK)
 			return fr;
 	}
-	
-	if (IsFatPath(szSrcPath))
-		fr = FatCopy(szSrcPath, szDestPath);
-	else
-		fr = CpmCopy(szSrcPath, szDestPath);
+
+	if (fr == FR_OK)
+	{
+		if (IsFatPath(szSrcPath))
+			fr = FatCopy(szSrcPath, szDestPath);
+		else
+			fr = CpmCopy(szSrcPath, szDestPath);
+	}
 	
 	f_mount(0, szSrcPath, 0);		// unmount ignoring any errors
 	f_mount(0, szDestPath, 0);		// unmount ignoring any errors
@@ -747,14 +783,158 @@ FRESULT Copy(void)
 
 FRESULT Rename(void)
 {
-	printf("\nREN function not yet implemented!!!");
-	return FR_INVALID_PARAMETER;
+	FRESULT fr;
+	int nFiles;
+	FATFS fsSrc;
+	DIR dir;
+	FILINFO fno;
+	char * szSrcPath;
+	char * szDestPath;
+	char szSrcSpec[MAX_FN];
+	char szDestSpec[MAX_FN];
+	
+	nFiles = 0;
+	
+	szSrcPath = strtok(NULL, " ");
+	if (szSrcPath == NULL)
+		return FR_INVALID_PARAMETER;
+
+	szDestPath = strtok(NULL, " ");
+	if (szDestPath == NULL)
+		return FR_INVALID_PARAMETER;
+	
+	fr = SplitPath(szSrcPath, szSrcSpec);
+	if (fr != FR_OK)
+		return fr;
+	
+	if (!IsFatPath(szSrcPath))
+		return FR_INVALID_PARAMETER;
+
+	fr = SplitPath(szDestPath, szDestSpec);
+	if (fr != FR_OK)
+		return fr;
+	
+	//if (*szDestPath && !IsFatPath(szDestPath))
+	//	return FR_INVALID_PARAMETER;
+	
+	// if dest drive specified, dest drive must == src drive
+
+	if (*szSrcSpec == '\0')
+		return FR_INVALID_PARAMETER;
+	
+	//if (*szDestSpec == '\0')
+	//	return FR_INVALID_PARAMETER;
+	
+	if (IsWild(szSrcSpec) && (*szDestSpec != '\0'))
+		return FR_INVALID_PARAMETER;
+	
+	fr = f_mount(&fsSrc, szSrcPath, 1);
+	if (fr != FR_OK)
+		return fr;
+	
+	//printf("\nSrcPath='%s', SrcSpec='%s'", szSrcPath, szSrcSpec);
+	
+	fr = f_findfirst(&dir, &fno, szSrcPath, szSrcSpec);
+	
+	if (fr == FR_OK)
+		printf("\nRenaming...\n");
+
+	while ((fr == FR_OK) && (fno.fname[0]))
+	{
+		char szSrcFile[MAX_PATH];
+		char szDestFile[MAX_PATH];
+		
+		strncpy(szSrcFile, szSrcPath, sizeof(szSrcFile) - 1);
+		strncat(szSrcFile, "/", sizeof(szSrcFile) - 1);
+		strncat(szSrcFile, fno.fname, sizeof(szSrcFile) - 1);
+		
+		//printf("\nszDestPath='%s', szDestSpec='%s'", szDestPath, szDestSpec);
+
+		strncpy(szDestFile, *szDestPath ? szDestPath : szSrcPath, sizeof(szDestFile) - 1);
+		strncat(szDestFile, "/", sizeof(szDestFile) - 1);
+		strncat(szDestFile, (*szDestSpec == '\0') ? fno.fname : szDestSpec, sizeof(szDestFile) - 1);
+		
+		printf("\n%s ==> %s", szSrcFile, szDestFile);
+
+		fr = f_rename(szSrcFile, szDestFile);
+		if (fr == FR_OK)
+			nFiles++;
+		
+		if (fr == FR_OK)
+			fr = f_findnext(&dir, &fno);
+	}
+	
+	f_mount(0, szSrcPath, 0);		// unmount ignoring any errors
+
+	if (nFiles)
+		printf("\n\n    %i File(s) Renamed", nFiles);
+	else
+		fr = FR_NO_FILE;
+
+	return fr;
 }
 
 FRESULT Delete(void)
 {
-	printf("\nDEL function not yet implemented!!!");
-	return FR_INVALID_PARAMETER;
+	FATFS fs;
+	FRESULT fr;
+	DIR dir;
+	FILINFO fno;
+	char * szPath;
+	char szFileSpec[MAX_FN];
+	int nFiles;
+	
+	nFiles = 0;
+	
+	szPath = strtok(NULL, " ");
+	if (szPath == NULL)
+		return FR_INVALID_PARAMETER;
+
+	fr = f_mount(&fs, szPath, 0);
+	if (fr != FR_OK)
+		return fr;
+	
+	fr = SplitPath(szPath, szFileSpec);
+	if (fr != FR_OK)
+		return fr;
+	
+	if (*szFileSpec == '\0')
+		return FR_INVALID_PARAMETER;
+	
+	// printf("\nf_findfirst() szPath: '%s', szFileSpec: '%s'", szPath, szFileSpec);
+
+	fr = f_findfirst(&dir, &fno, szPath, szFileSpec);
+
+	if (fr == FR_OK)
+		printf("\nDeleting...\n");
+
+	while ((fr == FR_OK) && (fno.fname[0]))
+	{
+		char szDelFile[MAX_PATH];
+		
+		strncpy(szDelFile, szPath, sizeof(szDelFile) - 1);
+		strncat(szDelFile, "/", sizeof(szDelFile) - 1);
+		strncat(szDelFile, fno.fname, sizeof(szDelFile) - 1);
+		
+		printf("\n%s", szDelFile);
+		
+		fr = f_unlink(szDelFile);
+		if (fr != FR_OK)
+			return fr;
+		
+		nFiles++;
+		
+		fr = f_findnext(&dir, &fno);
+	}
+
+	f_mount(0, szPath, 0);		// unmount ignoring any errors
+	
+	if (nFiles)
+		printf("\n\n    %i File(s) Deleted", nFiles);
+	else
+		fr = FR_NO_FILE;
+
+	return fr;
 }
 
 int main(int argc, char * argv[])
