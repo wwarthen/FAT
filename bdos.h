@@ -16,6 +16,7 @@ unsigned int bdoscall(unsigned char fn, unsigned int DE) __naked;
 #define BDOS_CLOSEFILE(fcb) (BYTE)bdoscall(16, fcb)
 #define BDOS_FINDFIRST(fcb) (BYTE)bdoscall(17, fcb)
 #define BDOS_FINDNEXT(fcb) (BYTE)bdoscall(18, fcb)
+#define BDOS_DELETE(fcb) (BYTE)bdoscall(19, fcb)
 #define BDOS_READSEQ(fcb) (BYTE)bdoscall(20, fcb)
 #define BDOS_WRITESEQ(fcb) (BYTE)bdoscall(21, fcb)
 #define BDOS_MAKEFILE(fcb) (BYTE)bdoscall(22, fcb)

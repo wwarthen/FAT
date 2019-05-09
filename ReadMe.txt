@@ -1,7 +1,7 @@
 RomWBW HBIOS CP/M FAT Utility ("FAT.COM")
 
 Author: Wayne Warthen
-Updated: 7-May-2019
+Updated: 8-May-2019
 
 Application to manipulate and exchange files with a FAT (DOS)
 filesystem.  Runs on any HBIOS hosted CP/M implementation.
@@ -19,12 +19,19 @@ LICENSE:
   GNU GPLv3 (see file LICENSE.txt)
 
 NOTES:
- - During a file copy, if the destination file exists, it is not
-   handled well.  If destination if FAT filesystem, the file is
-   silently overwritten.  If CP/M, the copy aborts with an error.
-
- - Wildcard matching in FAT filesystems is a bit unusual as
-   implemented by FatFS.  See FatFS documentation.
+ - Partitioned or non-partitioned media is handled automatically.
+   A floppy drive is a good example of a non-partitioned FAT
+   filesystem and will be recognized.  Larger media will typically
+   have a partition table which will be recognized by the
+   application to find the FAT filesystem.
+   
+ - Although RomWBW-style CP/M media does not know anything about
+   partition tables, it is entirely possible to have media that
+   has both CP/M and FAT file systems on it.  This is accomplished
+   by creating a FAT filesystem on the media that starts on a track
+   beyond the last track used by CP/M.  Each CP/M slice on a
+   media will occupy a little over 8MB.  So, make sure to start
+   your FAT partition beyond (slice count) * 8MB.
 
  - The application infers whether you are attempting to reference
    a FAT or CP/M filesystem via the drive specifier (char before ':').
@@ -34,17 +41,28 @@ NOTES:
    is no drive character specified, the current CP/M filesystem and
    current CP/M drive is assumed.  For example:
    
-   2:README.TXT refers to FAT file README.TXT on disk unit #2
-   C:README.TXT refers to CP/M file README.TXT on CP/M drive C
-   README.TXT refers to CP/M file README.TXT on current CP/M drive
+   "2:README.TXT" refers to FAT file README.TXT on disk unit #2
+   "C:README.TXT" refers to CP/M file README.TXT on CP/M drive C
+   "README.TXT" refers to CP/M file README.TXT on current CP/M drive
    
- - Application is generally oblivious to system files.
+ - Files with SYS, HIDDEN, or R/O only attributes are not given
+   any special treatment.  Such files are found and processed
+   like any other file.  However, any attempt to write to a
+   read-only file will fail and the application will abort.
  
  - It is not currently possible to reference CP/M user areas other
    than the current user.  To copy files to alternate user areas,
    you must switch to the desired user number first or use an
    additional step to copy the file to the desired user area.
+   
+ - Accessing FAT filesystems on a floppy requires the use of
+   RomWBW HBIOS v2.9.1-pre.13 or greater.
+   
+ - Files written are not verified.
  
+ - Wildcard matching in FAT filesystems is a bit unusual as
+   implemented by FatFS.  See FatFS documentation.
+
 BUILD NOTES:
  - Application is based on FatFS.  FatFS source is included.
 
@@ -61,10 +79,14 @@ BUILD NOTES:
 TO DO:
  - Confirm HBIOS is present at startup.
 
- - Handle existing file collisions with user option prompt.
+ - Allows ^C to abort any operation in progress.
  
- - Handle read-only and system files somehow.
+ - Handle wildcards in destination, i.e.:
+     "FAT REN 2:/*.TXT 2:/*.BAK"
+ 
+ - Do something intelligent with R/O and SYS files
  
 HISTORY:
  2-May-2019: v0.9 initial release (beta)
  7-May-2019: v0.9.1 added REN and DEL (beta)
+ 8-May-2019: v0.9.2 handle file collisions w/ user prompt (beta)

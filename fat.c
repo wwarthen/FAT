@@ -3,7 +3,7 @@
 HBIOS CP/M FAT Utility ("FAT.COM")
 
 Author: Wayne Warthen
-Updated: 7-May-2019
+Updated: 8-May-2019
 
 LICENSE:
 	GNU GPLv3 (see file LICENSE.txt)
@@ -85,7 +85,7 @@ int Error(FRESULT fr)
 int Usage(void)
 {
 	printf(
-		"\nCP/M FAT Utility v0.9.1, 7-May-2019 [%s]"
+		"\nCP/M FAT Utility v0.9.2, 8-May-2019 [%s]"
 		"\nCopyright (C) 2019, Wayne Warthen, GNU GPL v3"
 		"\n"
 		"\nUsage: FAT <cmd> <parms>"
@@ -214,9 +214,9 @@ int IsWild(char * szPath)
 	return FALSE;
 }
 
-int IsFatPath(char * szPath)
+int IsFatPath(const TCHAR * szPath)
 {
-	char * p;
+	const TCHAR * p;
 	
 	p = szPath;
 
@@ -280,6 +280,8 @@ FRESULT MakeFCB(const TCHAR * path, FCB * pfcb)
 	const TCHAR * p;
 	int n;
 	
+	memset(pfcb, 0, sizeof(FCB));
+	
 	p = path;
 	
 	if (p[1] == ':')
@@ -331,14 +333,65 @@ FRESULT MakeFCB(const TCHAR * path, FCB * pfcb)
 			pfcb->ext[n] = *(p++);
 	}
 	
-	//printf("\nFCB: %i, ", pfcb->drv);
-	//for (n = 0; n < 8; n++)
-	//	printf("%c", pfcb->name[n]);
-	//printf(".");
-	//for (n = 0; n < 3; n++)
-	//	printf("%c", pfcb->ext[n]);
+	// DumpFCB(pfcb);
 	
+	return FR_OK;
+}
+
+void DumpFCB(FCB * pfcb)
+{
+	int n;
 	
+	printf("\nFCB: %i, ", pfcb->drv);
+	for (n = 0; n < 8; n++)
+		printf("%c", pfcb->name[n]);
+	printf(".");
+	for (n = 0; n < 3; n++)
+		printf("%c", pfcb->ext[n]);
+}
+
+int exists(const TCHAR * path)
+{
+	BYTE rc;
+	FRESULT fr;
+	FCB fcb;
+	BYTE buf[RECLEN];
+	
+	if (IsFatPath(path))
+	{
+		FILINFO fno;
+
+		fr = f_stat(path, &fno);
+		
+		return (fr == FR_OK);
+	}
+	
+	fr = MakeFCB(path, &fcb);
+	
+	if (fr != FR_OK)
+		return FALSE;
+	
+	// DumpFCB(&fcb);
+		
+	BDOS_SETDMA((WORD)&buf);
+	
+	rc = BDOS_FINDFIRST((WORD)&fcb);
+	
+	return (rc != 0xFF);
+}
+
+FRESULT delete(const TCHAR * path)
+{
+	FRESULT fr;
+	FCB fcb;
+	
+	if (IsFatPath(path))
+		return f_unlink(path);
+	
+	fr = MakeFCB(path, &fcb);
+	
+	BDOS_DELETE((WORD)&fcb);	// DELETE function has no return value
+
 	return FR_OK;
 }
 
@@ -349,7 +402,6 @@ FRESULT open(FILE * pfile, const TCHAR * path, BYTE mode)
 	
 	BYTE rc;
 	FRESULT fr;
-	BYTE bufTemp[RECLEN];
 	
 	fr = MakeFCB(path, &pfile->fcb);
 	
@@ -364,15 +416,6 @@ FRESULT open(FILE * pfile, const TCHAR * path, BYTE mode)
 
 	if (mode & FA_WRITE)
 	{
-		BDOS_SETDMA((WORD)&bufTemp);
-		
-		rc = BDOS_FINDFIRST((WORD)pfile->fcb);
-		
-		// printf("\nBDOS FindFirst(): %i", rc);
-
-		if (rc != 0xFF)
-			return FR_EXIST;
-		
 		rc = BDOS_MAKEFILE((WORD)pfile->fcb);
 		
 		// printf("\nBDOS MakeFile(): %i", rc);
@@ -460,6 +503,9 @@ FRESULT CopyFile(char * szSrcFile, char * szDestFile)
 	//printf("\n  CopyFile() %s ==> %s", szSrcFile, szDestFile);
 	printf("\n%s ==> %s", szSrcFile, szDestFile);
 	
+	if (strcmp(szSrcFile, szDestFile) == 0)
+		return FR_INVALID_PARAMETER;
+	
 	memset(&fileSrc, 0, sizeof(fileSrc));
 	memset(&fileDest, 0, sizeof(fileDest));
 	
@@ -469,12 +515,31 @@ FRESULT CopyFile(char * szSrcFile, char * szDestFile)
 	//printf("\nSrcFile %s FAT", fileSrc.fstyp == FS_FAT ? "IS" : "NOT");
 	//printf("\nDestFile %s FAT", fileDest.fstyp == FS_FAT ? "IS" : "NOT");
 	
+	if (exists(szDestFile))
+	{
+		char c;
+		
+		printf(" Overwrite? (Y/N)");
+		
+		do {
+			c = getchar();
+		} while ((c != 'y') && (c != 'Y') && (c != 'N') && (c != 'n'));
+		
+		if (c == 'n' || c == 'N')
+			return 100;	// special case value to indicate "skip file"
+		
+		fr = delete(szDestFile);
+		
+		if (fr != FR_OK)
+			return fr;
+	}
+	
 	fr = open(&fileSrc, szSrcFile, FA_READ);
 	
 	if (fr == FR_OK)
 	{
 		fr = open(&fileDest, szDestFile, FA_WRITE | FA_CREATE_ALWAYS);
-
+		
 		if (fr == FR_OK)
 		{
 			UINT br, bw;
@@ -507,13 +572,13 @@ FRESULT CopyFile(char * szSrcFile, char * szDestFile)
 					}
 				}
 			} while (br == RECLEN);
+
+			close(&fileDest);
 		}
-		
-		close(&fileDest);
+
+		close(&fileSrc);
 	}
 	
-	close(&fileSrc);
-
 	return fr;
 }
 
@@ -563,6 +628,8 @@ FRESULT FatCopy(char * szSrcPath, char * szDestPath)
 	
 	if (fr == FR_OK)
 		printf("\nCopying...\n");
+	else
+		return FR_NO_FILE;
 
 	while ((fr == FR_OK) && (fno.fname[0]))
 	{
@@ -584,17 +651,22 @@ FRESULT FatCopy(char * szSrcPath, char * szDestPath)
 			
 			fr = CopyFile(szSrcFile, szDestFile);
 			if (fr == FR_OK)
+			{
+				printf(" [OK]");
 				nFiles++;
+			}
+			if (fr == 100)
+			{
+				printf(" [Skipped]");
+				fr = FR_OK;
+			}
 		}
 		
 		if (fr == FR_OK)
 			fr = f_findnext(&dir, &fno);
 	}
 	
-	if (nFiles)
-		printf("\n\n    %i File(s) Copied", nFiles);
-	else
-		fr = FR_NO_FILE;
+	printf("\n\n    %i File(s) Copied", nFiles);
 
 	return fr;
 }
@@ -617,7 +689,6 @@ FRESULT CpmCopy(char * szSrcPath, char * szDestPath)
 	
 	nFiles = 0;
 	
-	memset(&fcb, 0, sizeof(fcb));
 	fr = MakeFCB(szSrcPath, &fcb);
 	memcpy(&fcbSave, &fcb, sizeof(fcb));
 	
@@ -661,6 +732,8 @@ FRESULT CpmCopy(char * szSrcPath, char * szDestPath)
 	
 	if (rc != 0xFF)
 		printf("\nCopying...\n");
+	else
+		return FR_NO_FILE;
 
 	while (rc != 0xFF)
 	{
@@ -703,14 +776,21 @@ FRESULT CpmCopy(char * szSrcPath, char * szDestPath)
 			strncat(szDestFile, "/", sizeof(szDestFile) - 1);
 		strncat(szDestFile, (*szDestSpec == '\0') ? p2 : szDestSpec, sizeof(szDestFile) - 1);
 		
+		//printf("\nCopy File: %s", szSrcFile);
 		fr = CopyFile(szSrcFile, szDestFile);
+		if (fr == FR_OK)
+		{
+			printf(" [OK]");
+			nFiles++;
+		}
+		if (fr == 100)
+		{
+			printf(" [Skipped]");
+			fr = FR_OK;
+		}
 		if (fr != FR_OK)
 			return fr;
 	
-		//printf("\nCopy File: %s", szSrcFile);
-		
-		nFiles++;
-		
 		BDOS_SETDMA((WORD)&buf);
 
 		// Restart search from last file found
@@ -731,10 +811,7 @@ FRESULT CpmCopy(char * szSrcPath, char * szDestPath)
 		//printf("\nBDOS FindNext(): %i", rc);
 	}
 	
-	if (nFiles)
-		printf("\n\n    %i File(s) Copied", nFiles);
-	else
-		fr = FR_NO_FILE;
+	printf("\n\n    %i File(s) Copied", nFiles);
 
 	return fr;
 }
@@ -817,7 +894,7 @@ FRESULT Rename(void)
 	//if (*szDestPath && !IsFatPath(szDestPath))
 	//	return FR_INVALID_PARAMETER;
 	
-	// if dest drive specified, dest drive must == src drive
+	// TODO: if dest drive specified, dest drive must == src drive
 
 	if (*szSrcSpec == '\0')
 		return FR_INVALID_PARAMETER;
@@ -865,6 +942,9 @@ FRESULT Rename(void)
 	}
 	
 	f_mount(0, szSrcPath, 0);		// unmount ignoring any errors
+	
+	if (fr != FR_OK)
+		return fr;
 
 	if (nFiles)
 		printf("\n\n    %i File(s) Renamed", nFiles);
@@ -929,6 +1009,9 @@ FRESULT Delete(void)
 
 	f_mount(0, szPath, 0);		// unmount ignoring any errors
 	
+	if (fr != FR_OK)
+		return fr;
+
 	if (nFiles)
 		printf("\n\n    %i File(s) Deleted", nFiles);
 	else
