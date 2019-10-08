@@ -3,7 +3,7 @@
 HBIOS CP/M FAT Utility ("FAT.COM")
 
 Author: Wayne Warthen
-Updated: 8-May-2019
+Updated: 8-Oct-2019
 
 LICENSE:
 	GNU GPLv3 (see file LICENSE.txt)
@@ -19,7 +19,7 @@ LICENSE:
 #include "bdos.h"
 #include "ff.h"
 
-#define MAX_FN 11
+#define MAX_FN 12
 #define MAX_PATH 255
 
 #define FALSE 0
@@ -85,7 +85,7 @@ int Error(FRESULT fr)
 int Usage(void)
 {
 	printf(
-		"\nCP/M FAT Utility v0.9.2, 8-May-2019 [%s]"
+		"\nCP/M FAT Utility v0.9.3 (beta), 8-Oct-2019 [%s]"
 		"\nCopyright (C) 2019, Wayne Warthen, GNU GPL v3"
 		"\n"
 		"\nUsage: FAT <cmd> <parms>"
@@ -101,30 +101,6 @@ int Usage(void)
 	);
 	
 	return 4;
-}
-
-void DirLine(FILINFO *pfno)
-{
-	printf("\n%02u/%02u/%04u  ",
-		((pfno->fdate >> 5) & 0x0F),
-		((pfno->fdate >> 0) & 0x1F),
-		(((pfno->fdate >> 9) & 0x7F) + 1980)
-		);
-
-	printf("%02u:%02u:%02u  ",
-		((pfno->ftime >> 11) & 0x1F),
-		((pfno->ftime >> 5) & 0x3F),
-		(((pfno->ftime >> 0) & 0x1F) << 1)
-		);
-		
-	// Print attributes???
-
-    if (pfno->fattrib & AM_DIR)                    /* It is a directory */
-		printf("  <dir>       ");
-	else
-		printf("%12lu  ", pfno->fsize);
-
-    printf("%s", pfno->fname);
 }
 
 FRESULT SplitPath(char * szPath, char * szFileSpec)
@@ -155,52 +131,6 @@ FRESULT SplitPath(char * szPath, char * szFileSpec)
 	//printf("\nFileSpec='%s'", szFileSpec);
 	
 	return FR_OK;
-}
-
-FRESULT Dir(void)
-{
-	FATFS fs;
-	FRESULT fr;
-	DIR dir;
-	FILINFO fno;
-	char * szPath;
-	char szFileSpec[MAX_FN];
-	
-	szPath = strtok(NULL, " ");
-	if (szPath == NULL)
-		return FR_INVALID_PARAMETER;
-
-	fr = f_mount(&fs, szPath, 0);
-	if (fr != FR_OK)
-		return fr;
-	
-	fr = f_stat(szPath, &fno);
-
-	if ((fr == FR_OK) && (fno.fattrib & AM_DIR))
-		*szFileSpec = '\0';
-	else
-		fr = SplitPath(szPath, szFileSpec);
-
-	if (*szFileSpec == '\0')
-		strcpy(szFileSpec, "*");
-	
-	// printf("\nf_findfirst() szPath: '%s', szFileSpec: '%s'", szPath, szFileSpec);
-
-	if (fr == FR_OK)
-		fr = f_findfirst(&dir, &fno, szPath, szFileSpec);
-
-	if (fr == FR_OK)
-		printf("\nDirectory of %s\n", szPath);
-
-	while ((fr == FR_OK) && (fno.fname[0]))
-	{
-		DirLine(&fno);
-		fr = f_findnext(&dir, &fno);
-	}
-
-	f_mount(0, szPath, 0);		// unmount ignoring any errors
-	
-	return fr;
 }
 
 int IsWild(char * szPath)
@@ -350,7 +280,7 @@ void DumpFCB(FCB * pfcb)
 		printf("%c", pfcb->ext[n]);
 }
 
-int exists(const TCHAR * path)
+int Exists(const TCHAR * path)
 {
 	BYTE rc;
 	FRESULT fr;
@@ -380,7 +310,7 @@ int exists(const TCHAR * path)
 	return (rc != 0xFF);
 }
 
-FRESULT delete(const TCHAR * path)
+FRESULT DeleteFile(const TCHAR * path)
 {
 	FRESULT fr;
 	FCB fcb;
@@ -395,7 +325,7 @@ FRESULT delete(const TCHAR * path)
 	return FR_OK;
 }
 
-FRESULT open(FILE * pfile, const TCHAR * path, BYTE mode)
+FRESULT Open(FILE * pfile, const TCHAR * path, BYTE mode)
 {
 	if (pfile->fstyp == FS_FAT)
 		return f_open(&pfile->fil, path, mode);
@@ -429,7 +359,7 @@ FRESULT open(FILE * pfile, const TCHAR * path, BYTE mode)
 	return FR_INVALID_PARAMETER;
 }
 
-FRESULT close(FILE * pfile)
+FRESULT Close(FILE * pfile)
 {
 	if (pfile->fstyp == FS_FAT)
 		f_close(&pfile->fil);
@@ -446,7 +376,7 @@ FRESULT close(FILE * pfile)
 	return FR_OK;
 }
 
-FRESULT read(FILE * pfile, void * pbuf, UINT btr, UINT * br)
+FRESULT Read(FILE * pfile, void * pbuf, UINT btr, UINT * br)
 {
 	if (btr != RECLEN)
 		return FR_INVALID_PARAMETER;
@@ -471,7 +401,7 @@ FRESULT read(FILE * pfile, void * pbuf, UINT btr, UINT * br)
 	return FR_OK;
 }
 
-FRESULT write(FILE * pfile, void * pbuf, UINT btw, UINT * bw)
+FRESULT Write(FILE * pfile, void * pbuf, UINT btw, UINT * bw)
 {
 	if (btw != RECLEN)
 		return FR_INVALID_PARAMETER;
@@ -495,6 +425,76 @@ FRESULT write(FILE * pfile, void * pbuf, UINT btw, UINT * bw)
 	return FR_OK;
 }
 
+void DirLine(FILINFO *pfno)
+{
+	printf("\n%02u/%02u/%04u  ",
+		((pfno->fdate >> 5) & 0x0F),
+		((pfno->fdate >> 0) & 0x1F),
+		(((pfno->fdate >> 9) & 0x7F) + 1980)
+		);
+
+	printf("%02u:%02u:%02u  ",
+		((pfno->ftime >> 11) & 0x1F),
+		((pfno->ftime >> 5) & 0x3F),
+		(((pfno->ftime >> 0) & 0x1F) << 1)
+		);
+		
+	// Print attributes???
+
+    if (pfno->fattrib & AM_DIR)                    /* It is a directory */
+		printf("  <dir>       ");
+	else
+		printf("%12lu  ", pfno->fsize);
+
+    printf("%s", pfno->fname);
+}
+
+FRESULT Dir(void)
+{
+	FATFS fs;
+	FRESULT fr;
+	DIR dir;
+	FILINFO fno;
+	char * szPath;
+	char szFileSpec[MAX_FN];
+	
+	szPath = strtok(NULL, " ");
+	if (szPath == NULL)
+		return FR_INVALID_PARAMETER;
+
+	fr = f_mount(&fs, szPath, 0);
+	if (fr != FR_OK)
+		return fr;
+	
+	fr = f_stat(szPath, &fno);
+
+	if ((fr == FR_OK) && (fno.fattrib & AM_DIR))
+		*szFileSpec = '\0';
+	else
+		fr = SplitPath(szPath, szFileSpec);
+
+	if (*szFileSpec == '\0')
+		strcpy(szFileSpec, "*");
+	
+	// printf("\nf_findfirst() szPath: '%s', szFileSpec: '%s'", szPath, szFileSpec);
+
+	if (fr == FR_OK)
+		fr = f_findfirst(&dir, &fno, szPath, szFileSpec);
+
+	if (fr == FR_OK)
+		printf("\nDirectory of %s\n", szPath);
+
+	while ((fr == FR_OK) && (fno.fname[0]))
+	{
+		DirLine(&fno);
+		fr = f_findnext(&dir, &fno);
+	}
+
+	f_mount(0, szPath, 0);		// unmount ignoring any errors
+	
+	return fr;
+}
+
 FRESULT CopyFile(char * szSrcFile, char * szDestFile)
 {
 	FRESULT fr;
@@ -515,7 +515,7 @@ FRESULT CopyFile(char * szSrcFile, char * szDestFile)
 	//printf("\nSrcFile %s FAT", fileSrc.fstyp == FS_FAT ? "IS" : "NOT");
 	//printf("\nDestFile %s FAT", fileDest.fstyp == FS_FAT ? "IS" : "NOT");
 	
-	if (exists(szDestFile))
+	if (Exists(szDestFile))
 	{
 		char c;
 		
@@ -528,29 +528,31 @@ FRESULT CopyFile(char * szSrcFile, char * szDestFile)
 		if (c == 'n' || c == 'N')
 			return 100;	// special case value to indicate "skip file"
 		
-		fr = delete(szDestFile);
+		fr = DeleteFile(szDestFile);
 		
 		if (fr != FR_OK)
 			return fr;
 	}
 	
-	fr = open(&fileSrc, szSrcFile, FA_READ);
+	fr = Open(&fileSrc, szSrcFile, FA_READ);
 	
 	if (fr == FR_OK)
 	{
-		fr = open(&fileDest, szDestFile, FA_WRITE | FA_CREATE_ALWAYS);
+		fr = Open(&fileDest, szDestFile, FA_WRITE | FA_CREATE_ALWAYS);
 		
 		if (fr == FR_OK)
 		{
 			UINT br, bw;
 			BYTE buf[RECLEN];
 			
+			printf(" ...");
+			
 			do
 			{
 				br = 0;
 				memset(buf, 0x1A, RECLEN);
 			
-				fr = read(&fileSrc, buf, RECLEN, &br);
+				fr = Read(&fileSrc, buf, RECLEN, &br);
 				
 				if (fr != FR_OK)
 					break;
@@ -559,7 +561,7 @@ FRESULT CopyFile(char * szSrcFile, char * szDestFile)
 				{
 					bw = 0;
 
-					fr = write(&fileDest, buf, RECLEN, &bw);
+					fr = Write(&fileDest, buf, RECLEN, &bw);
 
 					if (fr != FR_OK)
 						break;
@@ -573,10 +575,10 @@ FRESULT CopyFile(char * szSrcFile, char * szDestFile)
 				}
 			} while (br == RECLEN);
 
-			close(&fileDest);
+			Close(&fileDest);
 		}
 
-		close(&fileSrc);
+		Close(&fileSrc);
 	}
 	
 	return fr;
@@ -623,6 +625,8 @@ FRESULT FatCopy(char * szSrcPath, char * szDestPath)
 	
 	if (IsWild(szSrcSpec) && (*szDestSpec != '\0'))
 		return FR_INVALID_PARAMETER;
+	
+	//printf("\n  szSrcPath: %s\n  szSrcSpec: %s", szSrcPath, szSrcSpec);
 	
 	fr = f_findfirst(&dir, &fno, szSrcPath, szSrcSpec);
 	
@@ -744,6 +748,8 @@ FRESULT CpmCopy(char * szSrcPath, char * szDestPath)
 
 		dirent = (FCB *)(buf + (32 * rc));
 		p = szSrcFile;
+		
+		// DumpFCB(dirent);
 
 		if (fcb.drv > 0)
 		{
@@ -757,7 +763,7 @@ FRESULT CpmCopy(char * szSrcPath, char * szDestPath)
 		{
 			if (dirent->name[n] == ' ')
 				break;
-			*(p++) = dirent->name[n];
+			*(p++) = dirent->name[n] & 0x7F;
 		}
 		
 		*(p++) = '.';
@@ -766,7 +772,7 @@ FRESULT CpmCopy(char * szSrcPath, char * szDestPath)
 		{
 			if (dirent->ext[n] == ' ')
 				break;
-			*(p++) = dirent->ext[n];
+			*(p++) = dirent->ext[n] & 0x7F;
 		}
 
 		*(p++) = '\0';

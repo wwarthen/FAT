@@ -1,7 +1,7 @@
 RomWBW HBIOS CP/M FAT Utility ("FAT.COM")
 
 Author: Wayne Warthen
-Updated: 8-May-2019
+Updated: 8-Oct-2019
 
 Application to manipulate and exchange files with a FAT (DOS)
 filesystem.  Runs on any HBIOS hosted CP/M implementation.
@@ -64,6 +64,8 @@ NOTES:
    implemented by FatFS.  See FatFS documentation.
 
 BUILD NOTES:
+ - Source is maintained on GitHub at https://github.com/wwarthen/FAT
+
  - Application is based on FatFS.  FatFS source is included.
 
  - SDCC compiler is required to build (v3.9.0 known working).
@@ -79,7 +81,7 @@ BUILD NOTES:
 TO DO:
  - Confirm HBIOS is present at startup.
 
- - Allows ^C to abort any operation in progress.
+ - Allow ^C to abort any operation in progress.
  
  - Handle wildcards in destination, i.e.:
      "FAT REN 2:/*.TXT 2:/*.BAK"
@@ -90,3 +92,4 @@ HISTORY:
  2-May-2019: v0.9 initial release (beta)
  7-May-2019: v0.9.1 added REN and DEL (beta)
  8-May-2019: v0.9.2 handle file collisions w/ user prompt (beta)
+ 8-Oct-2019: v0.9.3 fixed incorrect filename buffer size (MAX_FN)
