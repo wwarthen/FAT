@@ -82,6 +82,17 @@ char * strupr(char * str)
 	return str;
 }
 
+int Confirm(void)
+{
+	char c;
+		
+	do
+		c = getchar();
+	while ((c != 'y') && (c != 'Y') && (c != 'N') && (c != 'n'));
+	
+	return ((c == 'y') || (c == 'Y'));
+}
+
 int Error(FRESULT fr)
 {
 	printf("\n\nError: %s\n", ErrTab[fr]);
@@ -92,7 +103,7 @@ int Error(FRESULT fr)
 int Usage(void)
 {
 	printf(
-		"\nCP/M FAT Utility v0.9.6 (beta), 10-Oct-2019 [%s]"
+		"\nCP/M FAT Utility v0.9.7 (beta), 11-Oct-2019 [%s]"
 		"\nCopyright (C) 2019, Wayne Warthen, GNU GPL v3"
 		"\n"
 		"\nUsage: FAT <cmd> <parms>"
@@ -454,7 +465,13 @@ void DirLine(FILINFO *pfno)
 		printf("  <dir>       ");
 	else
 		printf("%12lu  ", pfno->fsize);
-
+	
+	printf("%c%c%c%c  ",
+	       (pfno->fattrib & AM_RDO) ? 'R' : '-',
+	       (pfno->fattrib & AM_HID) ? 'H' : '-',
+	       (pfno->fattrib & AM_SYS) ? 'S' : '-',
+	       (pfno->fattrib & AM_ARC) ? 'A' : '-');
+	
     printf("%s", pfno->fname);
 }
 
@@ -526,15 +543,9 @@ FRESULT CopyFile(char * szSrcFile, char * szDestFile)
 	
 	if (Exists(szDestFile))
 	{
-		char c;
-		
 		printf(" Overwrite? (Y/N)");
 		
-		do {
-			c = getchar();
-		} while ((c != 'y') && (c != 'Y') && (c != 'N') && (c != 'n'));
-		
-		if (c == 'n' || c == 'N')
+		if (!Confirm())
 			return 100;	// special case value to indicate "skip file"
 		
 		fr = DeleteFile(szDestFile);
@@ -1059,9 +1070,10 @@ FRESULT MakeDir(void)
 FRESULT Format(void)
 {
 	FRESULT fr;
-	char c;
+	BYTE opt;
 	int drv;
 	char * szPath;
+	REGS reg;
 	BYTE buf[FF_MAX_SS];
 	
 	szPath = strtok(NULL, " ");
@@ -1071,23 +1083,43 @@ FRESULT Format(void)
 	drv = FatDrive(szPath);
 	if (drv == -1)
 		return FR_INVALID_DRIVE;
+	
+	reg.b.B = 0x17;		// HBIOS Device Function
+	reg.b.C = drv;		// HBIOS Disk Unit Number
+	reg.w.DE = 0;
+	reg.w.HL = 0;
+	bioscall(&reg, &reg);
+	
+	if (reg.b.A != 0)
+		return FR_INVALID_DRIVE;
+	
+	if ((reg.b.C & 0x80) || 		// Floppy
+	    ((reg.b.C >> 3) == 4) ||	// ROM
+		((reg.b.C >> 3) == 5) || 	// RAM
+		((reg.b.C >> 3) == 6))		// RAMF
+		opt = FM_ANY | FM_SFD;
+	else
+		opt = FM_ANY;				// Hard Disk
 
-	printf("\nAbout to format FAT Filesystem on Disk Unit #%i.", FatDrive(szPath));
-	printf("\nAll existing data will be destroyed!!!");
+	if (opt & FM_SFD)
+		printf("\nAbout to format Disk Unit #%i."
+			   "\nAll existing data will be destroyed!!!",
+			   FatDrive(szPath));
+	else
+		printf("\nAbout to format FAT Filesystem on Disk Unit #%i."
+			   "\nAll existing FAT partition data will be destroyed!!!",
+			   FatDrive(szPath));
+	
 	printf("\n\nContinue (y/n)?");
 	
-	do
-		c = getchar();
-	while ((c != 'y') && (c != 'Y') && (c != 'N') && (c != 'n'));
-	
-	if (c == 'n' || c == 'N') {
+	if (!Confirm()) {
 		printf("\n\nFormat operation aborted.");
 		return 0;
 	}
-
+	
 	printf("\n\nFormatting...");
 	
-	fr = f_mkfs(szPath, FM_ANY, 0, buf, sizeof(buf));
+	fr = f_mkfs(szPath, opt, 0, buf, sizeof(buf));
 	
 	printf("%s", fr == FR_OK ? " Done" : " Failed!");
 	
@@ -1099,8 +1131,11 @@ int main(int argc, char * argv[])
 	char * tok;
 	FRESULT fr;
 	
-	if (chkbios() == BIOS_UNK)
-		return Usage();
+	if (chkbios() != BIOS_WBW)
+	{
+		printf("\nUnsupported BIOS!");
+		return Error(FR_INT_ERR);
+	}
 
 	if (argc != 2)
 		return Usage();

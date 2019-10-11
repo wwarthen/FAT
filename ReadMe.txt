@@ -1,7 +1,7 @@
 RomWBW HBIOS CP/M FAT Utility ("FAT.COM")
 
 Author: Wayne Warthen
-Updated: 10-Oct-2019
+Updated: 11-Oct-2019
 
 Application to manipulate and exchange files with a FAT (DOS)
 filesystem.  Runs on any HBIOS hosted CP/M implementation.
@@ -63,12 +63,12 @@ NOTES:
  - Files written are not verified.
  
  - Wildcard matching in FAT filesystems is a bit unusual as
-   implemented by FatFS.  See FatFS documentation.
+   implemented by FatFs.  See FatFs documentation.
 
 BUILD NOTES:
  - Source is maintained on GitHub at https://github.com/wwarthen/FAT
 
- - Application is based on FatFS.  FatFS source is included.
+ - Application is based on FatFs.  FatFs source is included.
 
  - SDCC compiler is required to build (v3.9.0 known working).
 
@@ -77,7 +77,7 @@ BUILD NOTES:
  - See Build.cmd for sample build script under Windows.  References
    to SDCC and ZX must be updated for your environment.
    
- - Note that ff.c (core FatFS code) gneerates quite a few compiler
+ - Note that ff.c (core FatFs code) generates quite a few compiler
    warnings (all appear to be benign).
 
 TO DO:
@@ -89,10 +89,13 @@ TO DO:
  - Do something intelligent with R/O and SYS files on FAT
  
 HISTORY:
-   2-May-2019: v0.9 initial release (beta)
-   7-May-2019: v0.9.1 added REN and DEL (beta)
-   8-May-2019: v0.9.2 handle file collisions w/ user prompt (beta)
-   8-Oct-2019: v0.9.3 fixed incorrect filename buffer size (MAX_FN) (beta)
-  10-Oct-2019: v0.9.4 upgraded to FatFs R0.13c (beta)
-  10-Oct-2019: v0.9.5 added MD (make directory) (beta)
-  10-Oct-2019: v0.9.6 added FORMAT
+   2-May-2019: v0.9   (beta) initial release
+   7-May-2019: v0.9.1 (beta) added REN and DEL
+   8-May-2019: v0.9.2 (beta) handle file collisions w/ user prompt
+   8-Oct-2019: v0.9.3 (beta) fixed incorrect filename buffer size (MAX_FN)
+  10-Oct-2019: v0.9.4 (beta) upgraded to FatFs R0.13c
+  10-Oct-2019: v0.9.5 (beta) added MD (make directory)
+  10-Oct-2019: v0.9.6 (beta) added FORMAT
+  11-Oct-2019: v0.9.7 (beta) fix FORMAT to use existing partition table entries
+                             add attributes to directory listing
+		      

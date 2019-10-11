@@ -18,7 +18,6 @@
 /
 /----------------------------------------------------------------------------*/
 
-
 #include "ff.h"			/* Declarations of FatFs API */
 #include "diskio.h"		/* Declarations of device I/O functions */
 
@@ -5556,8 +5555,24 @@ FRESULT f_mkfs (
 	if (vol < 0) return FR_INVALID_DRIVE;
 	if (FatFs[vol]) FatFs[vol]->fs_type = 0;	/* Clear the volume if mounted */
 	pdrv = LD2PD(vol);	/* Physical drive */
-	part = LD2PT(vol);	/* Partition (0:create as new, 1-4:get from partition table) */
 
+	// wbw
+	//part = LD2PT(vol);	/* Partition (0:create as new, 1-4:get from partition table) */
+	part = 0;
+	if (!(opt & FM_SFD)) {
+		buf = (BYTE*)work;	/* Working buffer */
+		if (disk_read(pdrv, buf, 0, 1) != RES_OK) LEAVE_MKFS(FR_DISK_ERR);	/* Load MBR */
+		for (i = 0; i < 4; i++) {		/* Get partition offset */
+			pte = buf + (MBR_Table + i * SZ_PTE);
+			sys = pte[PTE_System];
+			if ((sys == 1) || (sys == 4) || (sys == 6) || (sys == 0xb) || (sys == 0xc) || (sys == 0xe)) {
+				part = i + 1;
+				break;
+			}
+		}
+		if (part == 0) LEAVE_MKFS(FR_MKFS_ABORTED);
+	}
+	
 	/* Check physical drive status */
 	stat = disk_initialize(pdrv);
 	if (stat & STA_NOINIT) return FR_NOT_READY;
@@ -5587,7 +5602,9 @@ FRESULT f_mkfs (
 	if (!buf || sz_buf == 0) return FR_NOT_ENOUGH_CORE;
 
 	/* Determine where the volume to be located (b_vol, sz_vol) */
-	if (FF_MULTI_PARTITION && part != 0) {
+	// wbw
+	//if (FF_MULTI_PARTITION && part != 0) {
+	if (part != 0) {
 		/* Get partition information from partition table in the MBR */
 		if (disk_read(pdrv, buf, 0, 1) != RES_OK) LEAVE_MKFS(FR_DISK_ERR);	/* Load MBR */
 		if (ld_word(buf + BS_55AA) != 0xAA55) LEAVE_MKFS(FR_MKFS_ABORTED);	/* Check if MBR is valid */
@@ -5954,7 +5971,9 @@ FRESULT f_mkfs (
 	}
 
 	/* Update partition information */
-	if (FF_MULTI_PARTITION && part != 0) {	/* Created in the existing partition */
+	// wbw
+	//if (FF_MULTI_PARTITION && part != 0) {	/* Created in the existing partition */
+	if (part != 0) {	/* Created in the existing partition */
 		/* Update system ID in the partition table */
 		if (disk_read(pdrv, buf, 0, 1) != RES_OK) LEAVE_MKFS(FR_DISK_ERR);	/* Read the MBR */
 		buf[MBR_Table + (part - 1) * SZ_PTE + PTE_System] = sys;		/* Set system ID */
