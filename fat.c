@@ -11,11 +11,11 @@ LICENSE:
 **********************************************************************/
 
 #include <stdlib.h>
-#include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include <ctype.h>
 
+#include "bios.h"
 #include "bdos.h"
 #include "ff.h"
 
@@ -65,6 +65,13 @@ char * ErrTab[] =
 	"Invalid Parameter"                   // FR_INVALID_PARAMETER
 };
 
+char * BiosName[] =
+{
+	"Unknown",
+	"RomWBW HBIOS",
+	"UNA UBIOS"
+};
+
 char * strupr(char * str)
 {
 	char * s;
@@ -85,19 +92,21 @@ int Error(FRESULT fr)
 int Usage(void)
 {
 	printf(
-		"\nCP/M FAT Utility v0.9.3 (beta), 8-Oct-2019 [%s]"
+		"\nCP/M FAT Utility v0.9.6 (beta), 10-Oct-2019 [%s]"
 		"\nCopyright (C) 2019, Wayne Warthen, GNU GPL v3"
 		"\n"
 		"\nUsage: FAT <cmd> <parms>"
 		"\n  FAT DIR <path>"
 		"\n  FAT COPY <src> <dst>"
 		"\n  FAT REN <from> <to>"
-		"\n  FAT DEL <path><filename>"
+		"\n  FAT DEL <path>[<file>|<dir>]"
+		"\n  FAT MD <path>"
+		"\n  FAT FORMAT <drv>"
 		"\n"
 		"\nCP/M filespec: <d>:FILENAME.EXT (<d> is CP/M drive letter A-P)"
 		"\nFAT filespec:  <u>:/DIR/FILENAME.EXT (<u> is disk unit #)"
-		"\n"
-		, "HBIOS"
+		"\n",
+		BiosName[bios_id]
 	);
 	
 	return 4;
@@ -1026,10 +1035,72 @@ FRESULT Delete(void)
 	return fr;
 }
 
+FRESULT MakeDir(void)
+{
+	FATFS fs;
+	FRESULT fr;
+	char * szPath;
+	
+	szPath = strtok(NULL, " ");
+	if (szPath == NULL)
+		return FR_INVALID_PARAMETER;
+
+	fr = f_mount(&fs, szPath, 0);
+	if (fr != FR_OK)
+		return fr;
+	
+	fr = f_mkdir(szPath);
+	
+	f_mount(0, szPath, 0);		// unmount ignoring any errors
+	
+	return fr;
+}
+
+FRESULT Format(void)
+{
+	FRESULT fr;
+	char c;
+	int drv;
+	char * szPath;
+	BYTE buf[FF_MAX_SS];
+	
+	szPath = strtok(NULL, " ");
+	if (szPath == NULL)
+		return FR_INVALID_PARAMETER;
+	
+	drv = FatDrive(szPath);
+	if (drv == -1)
+		return FR_INVALID_DRIVE;
+
+	printf("\nAbout to format FAT Filesystem on Disk Unit #%i.", FatDrive(szPath));
+	printf("\nAll existing data will be destroyed!!!");
+	printf("\n\nContinue (y/n)?");
+	
+	do
+		c = getchar();
+	while ((c != 'y') && (c != 'Y') && (c != 'N') && (c != 'n'));
+	
+	if (c == 'n' || c == 'N') {
+		printf("\n\nFormat operation aborted.");
+		return 0;
+	}
+
+	printf("\n\nFormatting...");
+	
+	fr = f_mkfs(szPath, FM_ANY, 0, buf, sizeof(buf));
+	
+	printf("%s", fr == FR_OK ? " Done" : " Failed!");
+	
+	return fr;
+}
+
 int main(int argc, char * argv[])
 {
 	char * tok;
 	FRESULT fr;
+	
+	if (chkbios() == BIOS_UNK)
+		return Usage();
 
 	if (argc != 2)
 		return Usage();
@@ -1049,6 +1120,10 @@ int main(int argc, char * argv[])
 		fr = Rename();
 	else if (!strcmp(tok, "DEL"))
 		fr = Delete();
+	else if (!strcmp(tok, "MD"))
+		fr = MakeDir();
+	else if (!strcmp(tok, "FORMAT"))
+		fr = Format();
 	else
 		fr = FR_INVALID_PARAMETER;
 	

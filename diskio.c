@@ -10,6 +10,8 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "ff.h"
+
 #include "bios.h"
 
 #include "diskio.h"		/* FatFs lower layer API */
@@ -28,14 +30,14 @@ typedef struct {
 /*-----------------------------------------------------------------------*/
 
 DSTATUS disk_status (
-	BYTE pdrv		/* Physical drive nmuber to identify the drive */
+	BYTE pdrv		/* Physical drive number to identify the drive */
 )
 {
 	pdrv;
 
-	// printf("\ndisk_status()");
+	//printf("\ndisk_status()");
 	
-	return RES_OK;		// Assume disk is ready
+	return 0;
 }
 
 
@@ -50,7 +52,19 @@ DSTATUS disk_initialize (
 {
 	REGS reg;
 	
-	// printf("\ndisk_initialize()");
+	//printf("\ndisk_initialize()");
+	
+	reg.b.B = 0xF8;		// HBIOS Sys Get
+	reg.b.C = 0x10;		// Disk unit count
+	reg.w.DE = 0;
+	reg.w.HL = 0;
+	bioscall(&reg, &reg);
+	
+	if (reg.b.A != 0)
+		return STA_NOINIT | STA_NODISK;
+	
+	if (!(pdrv < reg.b.E))
+		return STA_NOINIT | STA_NODISK;
 	
 	reg.b.B = 0x18;		// HBIOS Media Discovery
 	reg.b.C = pdrv;
@@ -60,7 +74,7 @@ DSTATUS disk_initialize (
 	
 	// printf("\nHBIOS Media = %u, Type=%u", reg.b.A, reg.b.E);
 
-	return reg.b.A ? RES_NOTRDY : RES_OK;
+	return reg.b.A ? STA_NOINIT : 0;
 }
 
 
@@ -158,6 +172,7 @@ DRESULT disk_ioctl (
 	pdrv;
 	cmd;
 	buff;
+	REGS reg;
 	
 	//printf("\ndisk_ioctl(%uc, %uc)", pdrv, cmd);
 
@@ -167,7 +182,16 @@ DRESULT disk_ioctl (
 			return RES_OK;
 		
 		case GET_SECTOR_COUNT:
-			*((DWORD *)buff) = ((DWORD)1024*16*16);
+			reg.b.B = 0x1A;		// Disk Capacity
+			reg.b.C = pdrv;		// Disk Unit
+			reg.w.DE = 0;
+			reg.w.HL = 0;
+			bioscall(&reg, &reg);
+			
+			if (reg.b.A != 0)
+				return RES_PARERR;
+			
+			*((DWORD *)buff) = ((DWORD)reg.w.DE << 16) + reg.w.HL;
 			return RES_OK;
 		
 		case GET_SECTOR_SIZE:

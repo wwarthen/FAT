@@ -1,7 +1,7 @@
 #ifndef _BDOS_H
 #define _BDOS_H
 
-#include "integer.h"
+#include "ff.h"
 
 unsigned int bdoscall(unsigned char fn, unsigned int DE) __naked;
 
