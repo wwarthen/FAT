@@ -31,6 +31,8 @@ LICENSE:
 
 #define RECLEN 128
 
+#define CHUNKSIZE 32
+
 typedef struct
 {
 	int	fstyp;
@@ -60,7 +62,7 @@ char * ErrTab[] =
 	"Make Filesystem Failed",             // FR_MKFS_ABORTED
 	"Timeout",                            // FR_TIMEOUT
 	"Locked",                             // FR_LOCKED
-	"Insuffieient Memory",                // FR_NOT_ENOUGH_CORE
+	"Insufficient Memory",                // FR_NOT_ENOUGH_CORE
 	"Too Many Open Files",                // FR_TOO_MANY_OPEN_FILES
 	"Invalid Parameter"                   // FR_INVALID_PARAMETER
 };
@@ -103,8 +105,8 @@ int Error(FRESULT fr)
 int Usage(void)
 {
 	printf(
-		"\nCP/M FAT Utility v0.9.7 (beta), 11-Oct-2019 [%s]"
-		"\nCopyright (C) 2019, Wayne Warthen, GNU GPL v3"
+		"\nCP/M FAT Utility v0.9.8 (beta), 12-Apr-2021 [%s]"
+		"\nCopyright (C) 2021, Wayne Warthen, GNU GPL v3"
 		"\n"
 		"\nUsage: FAT <cmd> <parms>"
 		"\n  FAT DIR <path>"
@@ -700,21 +702,26 @@ FRESULT CpmCopy(char * szSrcPath, char * szDestPath)
 	FRESULT fr;
 	int rc;
 	int nFiles;
-	FCB fcb, fcbSave;
+	FCB fcbSave, fcbSrch;
 	BYTE buf[RECLEN];
 	FCB * dirent;
 	FILINFO fno;
 	char szSrcSpec[MAX_FN];
 	char szDestSpec[MAX_FN];
+  
+  int nEntry, nSkip;
 
 	szDestPath;
 
-	//printf("\nCpmCopy()...");
+	// printf("\nCpmCopy()...");
 	
 	nFiles = 0;
 	
-	fr = MakeFCB(szSrcPath, &fcb);
-	memcpy(&fcbSave, &fcb, sizeof(fcb));
+	fr = MakeFCB(szSrcPath, &fcbSrch);
+  
+  // DumpFCB(&fcbSrch);
+  
+  memcpy(&fcbSave, &fcbSrch, sizeof(fcbSave));
 	
 	if (fr != FR_OK)
 		return fr;
@@ -747,75 +754,125 @@ FRESULT CpmCopy(char * szSrcPath, char * szDestPath)
 	
 	if (IsWild(szSrcSpec) && (*szDestSpec != '\0'))
 		return FR_INVALID_PARAMETER;
-	
-	BDOS_SETDMA((WORD)&buf);
-	
-	rc = BDOS_FINDFIRST((WORD)&fcb);
-	
-	// printf("\nBDOS FindFirst(): %i", rc);
-	
-	if (rc != 0xFF)
-		printf("\nCopying...\n");
-	else
-		return FR_NO_FILE;
+  
+  nSkip = 0;
+  rc = 0;
+  
+  while (rc != 0xFF)
+  {
+    char FileList[CHUNKSIZE][12];
+    
+    memcpy(&fcbSrch, &fcbSave, sizeof(fcbSrch));
+    
+    // DumpFCB(&fcbSrch);
+    
+    BDOS_SETDMA((WORD)&buf);
+    
+    rc = BDOS_FINDFIRST((WORD)&fcbSrch);
+    
+    // printf("\nBDOS FindFirst(): %i", rc);
+    
+    if (nSkip == 0)
+    {
+      if (rc == 0xFF)
+        return FR_NO_FILE;
+      printf("\nCopying...\n");
+    }
+    
+    nEntry = 0;
 
+    while ((rc != 0xFF) && (nEntry < nSkip))
+    {
+      rc = BDOS_FINDNEXT((WORD)&fcbSrch);
+      nEntry++;
+    }
+    
+    nEntry = 0;
+
+    while ((rc != 0xFF) && (nEntry < CHUNKSIZE))
+    {
+      dirent = (FCB *)(buf + (32 * rc));
+      
+      // DumpFCB(dirent);
+      
+      memcpy(FileList[nEntry], dirent, sizeof(FileList[0]));
+      
+      nEntry++;
+      nSkip++;
+
+      rc = BDOS_FINDNEXT((WORD)&fcbSrch);
+    }
+
+    for (int iFile = 0; iFile < nEntry; iFile++)
+    {
+      char szSrcFile[MAX_PATH];
+      char szDestFile[MAX_PATH];
+      char *p, *p2;
+      int n;
+
+      dirent = (FCB *)FileList[iFile];
+      p = szSrcFile;
+      
+      // DumpFCB(dirent);
+
+      if (fcbSrch.drv > 0)
+      {
+        *(p++) = fcbSrch.drv + 'A' - 1;
+        *(p++) = ':';
+      }
+      
+      p2 = p;			// Remember start of filename/ext
+      
+      for (n = 0; n < 8; n++)
+      {
+        if (dirent->name[n] == ' ')
+          break;
+        *(p++) = dirent->name[n] & 0x7F;
+      }
+      
+      *(p++) = '.';
+      
+      for (n = 0; n < 3; n++)
+      {
+        if (dirent->ext[n] == ' ')
+          break;
+        *(p++) = dirent->ext[n] & 0x7F;
+      }
+
+      *(p++) = '\0';
+      
+      strncpy(szDestFile, szDestPath, sizeof(szDestFile) - 1);
+      if (IsFatPath(szDestPath))
+        strncat(szDestFile, "/", sizeof(szDestFile) - 1);
+      strncat(szDestFile, (*szDestSpec == '\0') ? p2 : szDestSpec, sizeof(szDestFile) - 1);
+      
+      // printf("\nCopy File: %s", szSrcFile);
+      
+      fr = CopyFile(szSrcFile, szDestFile);
+      if (fr == FR_OK)
+      {
+        printf(" [OK]");
+        nFiles++;
+      }
+      if (fr == 100)
+      {
+        printf(" [Skipped]");
+        fr = FR_OK;
+      }
+      if (fr != FR_OK)
+        return fr;
+    }
+  }
+
+	printf("\n\n    %i File(s) Copied", nFiles);
+
+  return fr;
+
+/**************************************************
+	
 	while (rc != 0xFF)
 	{
-		char szSrcFile[MAX_PATH];
-		char szDestFile[MAX_PATH];
-		char *p, *p2;
-		int n;
 
-		dirent = (FCB *)(buf + (32 * rc));
-		p = szSrcFile;
-		
-		// DumpFCB(dirent);
-
-		if (fcb.drv > 0)
-		{
-			*(p++) = fcb.drv + 'A' - 1;
-			*(p++) = ':';
-		}
-		
-		p2 = p;			// Remember start of filename/ext
-		
-		for (n = 0; n < 8; n++)
-		{
-			if (dirent->name[n] == ' ')
-				break;
-			*(p++) = dirent->name[n] & 0x7F;
-		}
-		
-		*(p++) = '.';
-		
-		for (n = 0; n < 3; n++)
-		{
-			if (dirent->ext[n] == ' ')
-				break;
-			*(p++) = dirent->ext[n] & 0x7F;
-		}
-
-		*(p++) = '\0';
-		
-		strncpy(szDestFile, szDestPath, sizeof(szDestFile) - 1);
-		if (IsFatPath(szDestPath))
-			strncat(szDestFile, "/", sizeof(szDestFile) - 1);
-		strncat(szDestFile, (*szDestSpec == '\0') ? p2 : szDestSpec, sizeof(szDestFile) - 1);
-		
-		//printf("\nCopy File: %s", szSrcFile);
-		fr = CopyFile(szSrcFile, szDestFile);
-		if (fr == FR_OK)
-		{
-			printf(" [OK]");
-			nFiles++;
-		}
-		if (fr == 100)
-		{
-			printf(" [Skipped]");
-			fr = FR_OK;
-		}
-		if (fr != FR_OK)
-			return fr;
 	
 		BDOS_SETDMA((WORD)&buf);
 
@@ -840,6 +897,8 @@ FRESULT CpmCopy(char * szSrcPath, char * szDestPath)
 	printf("\n\n    %i File(s) Copied", nFiles);
 
 	return fr;
+
+***********************************************************/
 }
 
 FRESULT Copy(void)

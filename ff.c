@@ -5562,6 +5562,7 @@ FRESULT f_mkfs (
 	if (!(opt & FM_SFD)) {
 		buf = (BYTE*)work;	/* Working buffer */
 		if (disk_read(pdrv, buf, 0, 1) != RES_OK) LEAVE_MKFS(FR_DISK_ERR);	/* Load MBR */
+		if (ld_word(buf + BS_55AA) != 0xAA55) LEAVE_MKFS(FR_MKFS_ABORTED);	/* Check boot record signature (always here regardless of the sector size) */
 		for (i = 0; i < 4; i++) {		/* Get partition offset */
 			pte = buf + (MBR_Table + i * SZ_PTE);
 			sys = pte[PTE_System];

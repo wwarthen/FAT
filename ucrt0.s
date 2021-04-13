@@ -48,8 +48,10 @@
 
 	.area   _CODE
 init:
-	;; Set stack pointer directly above top of memory.
-	ld	sp, #STACK
+	;; Set stack pointer directly below BDOS.
+	ld	hl,(#0x0006)	; get BDOS call vector
+	ld	l,#0x00		; throw away LSB
+	ld	sp,hl		; result is TOS
 
 	;; Initialise global variables
 	call	gsinit
@@ -57,11 +59,11 @@ init:
 	;; Setup argc, argv
 	ld	hl,#argv
 	push	hl
-	ld	de, #2
-	ld	a, (0x80)
+	ld	de,#2
+	ld	a,(0x80)
 	dec	a		; 00->FF or FF->FE; both are > 127x
-	cp	a, #127		; string will be <= 126 bytes
-	jr	c, have_string
+	cp	a,#127		; string will be <= 126 bytes
+	jr	c,have_string
 	dec	e
 have_string:
 	push	de

@@ -15,6 +15,10 @@ unsigned int bdoscall(unsigned char fn, unsigned int DE) __naked
 	
 	ld		hl,#2
 	add		hl,sp
+  
+  // IX and IY are borked by CP/NET client!!! Preserve for SDCC!!!
+  push  ix
+  push  iy
 	
 	ld		c,(hl)
 	inc		hl
@@ -22,7 +26,12 @@ unsigned int bdoscall(unsigned char fn, unsigned int DE) __naked
 	inc		hl
 	ld		d,(hl)
 	
-	jp		bdos				// returns w/ result in HL
+	call		bdos				// returns w/ result in HL
+  
+  pop iy
+  pop ix
+  
+  ret
 	
 	__endasm;
 }
