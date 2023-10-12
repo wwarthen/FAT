@@ -3,7 +3,7 @@
 HBIOS CP/M FAT Utility ("FAT.COM")
 
 Author: Wayne Warthen
-Updated: 8-Oct-2019
+Updated: 12-Oct-2023
 
 LICENSE:
 	GNU GPLv3 (see file LICENSE.txt)
@@ -105,8 +105,8 @@ int Error(FRESULT fr)
 int Usage(void)
 {
 	printf(
-		"\nCP/M FAT Utility v0.9.8 (beta), 12-Apr-2021 [%s]"
-		"\nCopyright (C) 2021, Wayne Warthen, GNU GPL v3"
+		"\nCP/M FAT Utility v0.9.9 (beta), 12-AOct-2023 [%s]"
+		"\nCopyright (C) 2019-23, Wayne Warthen, GNU GPL v3"
 		"\n"
 		"\nUsage: FAT <cmd> <parms>"
 		"\n  FAT DIR <path>"
@@ -1153,9 +1153,9 @@ FRESULT Format(void)
 		return FR_INVALID_DRIVE;
 	
 	if ((reg.b.C & 0x80) || 		// Floppy
-	    ((reg.b.C >> 3) == 4) ||	// ROM
-		((reg.b.C >> 3) == 5) || 	// RAM
-		((reg.b.C >> 3) == 6))		// RAMF
+	    ((reg.b.C & 0x0F) == 4) ||	// ROM
+		((reg.b.C & 0x0F) == 5) || 	// RAM
+		((reg.b.C & 0x0F) == 6))	// RAMF
 		opt = FM_ANY | FM_SFD;
 	else
 		opt = FM_ANY;				// Hard Disk
