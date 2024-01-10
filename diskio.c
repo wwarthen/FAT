@@ -199,7 +199,7 @@ DRESULT disk_ioctl (
 			return RES_OK;
 		
 		case GET_BLOCK_SIZE:
-			*((DWORD *)buff) = 512;
+			*((DWORD *)buff) = 1;
 			return RES_OK;
 		
 		case CTRL_TRIM:

@@ -1,28 +1,30 @@
 #ifndef _BIOS_H
 #define _BIOS_H
 
+#include "type.h"
+
 #define BIOS_UNK 0
 #define	BIOS_WBW 1
 #define	BIOS_UNA 2
 
 struct BYTEREGS
 {
-	unsigned char	C;
-	unsigned char	B;
-	unsigned char	E;
-	unsigned char	D;
-	unsigned char	L;
-	unsigned char	H;
-	unsigned char	F;
-	unsigned char	A;
+	BYTE	C;
+	BYTE	B;
+	BYTE	E;
+	BYTE	D;
+	BYTE	L;
+	BYTE	H;
+	BYTE	F;
+	BYTE	A;
 };
 
 struct WORDREGS
 {
-	unsigned int BC;
-	unsigned int DE;
-	unsigned int HL;
-	unsigned int AF;
+	WORD BC;
+	WORD DE;
+	WORD HL;
+	WORD AF;
 };
 
 typedef union
@@ -31,10 +33,7 @@ typedef union
 	struct WORDREGS w;
 } REGS;
 
-extern unsigned char bios_id;
-
-//unsigned char idbios(void) __naked;
-unsigned char chkbios(void);
-void bioscall(REGS *out, REGS *in) __naked;
+BYTE chkbios(void) __naked;
+void bioscall(REGS *out, REGS *in) __sdcccall(0) __naked;
 
 #endif /* _BIOS_H */

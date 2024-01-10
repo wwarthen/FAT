@@ -1,9 +1,9 @@
 #ifndef _BDOS_H
 #define _BDOS_H
 
-#include "ff.h"
+#include "type.h"
 
-unsigned int bdoscall(unsigned char fn, unsigned int DE) __naked;
+WORD bdoscall(BYTE fn, WORD parm) __naked;
 
 #define BDOS_SYSRES() (BYTE)bdoscall(0, 0)
 #define BDOS_CONIN() (BYTE)bdoscall(1, 0)
@@ -33,7 +33,7 @@ typedef struct {
 	BYTE rc;		// Record count for extent
 	BYTE map[16];	// Disk map
 	BYTE cr;		// Current record
-	BYTE rn[3];		// Random record number
+	BYTE rn[3];	// Random record number
 } FCB;
 
 #endif /* _BDOS_H */

@@ -43,6 +43,8 @@ typedef struct
 	};
 } FILE;
 
+int bios_id;
+
 char * ErrTab[] =
 {
 	"Successful Completion",              // FR_OK
@@ -105,8 +107,8 @@ int Error(FRESULT fr)
 int Usage(void)
 {
 	printf(
-		"\nCP/M FAT Utility v0.9.9 (beta), 12-AOct-2023 [%s]"
-		"\nCopyright (C) 2019-23, Wayne Warthen, GNU GPL v3"
+		"\nCP/M FAT Utility v1.0, 6-Jan-2024 [%s]"
+		"\nCopyright (C) 2019-24, Wayne Warthen, GNU GPL v3"
 		"\n"
 		"\nUsage: FAT <cmd> <parms>"
 		"\n  FAT DIR <path>"
@@ -214,13 +216,13 @@ int FatDrive(char * szPath)
 
 int IsValidFilenameChar(char c)
 {
-	int n;
-	char sBadCharList[] = "<>.,;:=?*[]_%|()/\\";
-	
+	//char sBadCharList[] = "<>.,;:=?*[]_%|()/\\";
+	char sBadCharList[] = "<>.,;:?*[]|/\\";
+
 	if ((c <= ' ') || (c > '~'))
 		return FALSE;
 	
-	for (n = 0; n < sizeof(sBadCharList); n++)
+	for (int n = 0; n < sizeof(sBadCharList); n++)
 		if (c == sBadCharList[n])
 			return FALSE;
 		
@@ -282,7 +284,11 @@ FRESULT MakeFCB(const TCHAR * path, FCB * pfcb)
 		else if (*p == '*')
 			pfcb->ext[n] = '?';
 		else
+		{
+			if (!IsValidFilenameChar(*p))
+				return FR_INVALID_NAME;
 			pfcb->ext[n] = *(p++);
+		}
 	}
 	
 	// DumpFCB(pfcb);
@@ -1129,7 +1135,7 @@ FRESULT MakeDir(void)
 FRESULT Format(void)
 {
 	FRESULT fr;
-	BYTE opt;
+	MKFS_PARM opt = {0, 1, 0, 0, 0};
 	int drv;
 	char * szPath;
 	REGS reg;
@@ -1156,11 +1162,11 @@ FRESULT Format(void)
 	    ((reg.b.C & 0x0F) == 4) ||	// ROM
 		((reg.b.C & 0x0F) == 5) || 	// RAM
 		((reg.b.C & 0x0F) == 6))	// RAMF
-		opt = FM_ANY | FM_SFD;
+		opt.fmt = FM_ANY | FM_SFD;
 	else
-		opt = FM_ANY;				// Hard Disk
+		opt.fmt = FM_ANY;				// Hard Disk
 
-	if (opt & FM_SFD)
+	if (opt.fmt & FM_SFD)
 		printf("\nAbout to format Disk Unit #%i."
 			   "\nAll existing data will be destroyed!!!",
 			   FatDrive(szPath));
@@ -1178,7 +1184,7 @@ FRESULT Format(void)
 	
 	printf("\n\nFormatting...");
 	
-	fr = f_mkfs(szPath, opt, 0, buf, sizeof(buf));
+	fr = f_mkfs(szPath, &opt, buf, sizeof(buf));
 	
 	printf("%s", fr == FR_OK ? " Done" : " Failed!");
 	
@@ -1189,12 +1195,8 @@ int main(int argc, char * argv[])
 {
 	char * tok;
 	FRESULT fr;
-	
-	if (chkbios() != BIOS_WBW)
-	{
-		printf("\nUnsupported BIOS!");
-		return Error(FR_INT_ERR);
-	}
+
+	bios_id = chkbios();
 
 	if (argc != 2)
 		return Usage();
@@ -1203,7 +1205,13 @@ int main(int argc, char * argv[])
 	
 	if (tok == NULL)
 		return Usage();
-	
+
+	if (bios_id != BIOS_WBW)
+	{
+		printf("\nUnsupported BIOS!");
+		return Error(FR_INT_ERR);
+	}
+
 	strupr(tok);
 	
 	if (!strcmp(tok, "DIR"))
