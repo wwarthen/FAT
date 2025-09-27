@@ -25,7 +25,7 @@ BYTE chkbios(void) __naked
 
 idbio1:
 	// Check for RomWBW (HBIOS)
-	ld		hl,(#0xfffe)	; HL := HBIOS ident location
+	ld		hl,(#0xfffc)	; HL := HBIOS ident location
 	ld		a,#'W'			; First byte of ident
 	cp		(hl)			; Compare
 	jr		nz,idbio2		; Not HBIOS

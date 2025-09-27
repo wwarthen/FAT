@@ -3,7 +3,7 @@
 HBIOS CP/M FAT Utility ("FAT.COM")
 
 Author: Wayne Warthen
-Updated: 2-May-2024
+Updated: 27-Aug-2025
 
 LICENSE:
 	GNU GPLv3 (see file LICENSE.txt)
@@ -107,8 +107,8 @@ int Error(FRESULT fr)
 int Usage(void)
 {
 	printf(
-		"\nCP/M FAT Utility v1.1, 2-May-2024 [%s]"
-		"\nCopyright (C) 2019-24, Wayne Warthen, GNU GPL v3"
+		"\nCP/M FAT Utility v1.2, 27-Aug-2025 [%s]"
+		"\nCopyright (C) 2019-25, Wayne Warthen, GNU GPL v3"
 		"\n"
 		"\nUsage: FAT <cmd> <parms>"
 		"\n  FAT DIR <path>"
